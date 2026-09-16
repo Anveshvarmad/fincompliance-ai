@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.clients.event_client import publish_event
 from app.models import Transaction
 from app.repositories.customer_repository import CustomerRepository
 from app.repositories.transaction_repository import TransactionRepository
@@ -114,10 +115,52 @@ class TransactionService:
         )
 
         try:
-            return TransactionRepository.create(
-                db,
-                transaction,
+            created_transaction = (
+                TransactionRepository.create(
+                    db,
+                    transaction,
+                )
             )
+
+            publish_event(
+                event_type="TRANSACTION_CREATED",
+                transaction_ref=(
+                    created_transaction
+                    .transaction_ref
+                ),
+                payload={
+                    "customer_ref":
+                        payload.customer_ref,
+
+                    "amount":
+                        str(
+                            created_transaction
+                            .amount
+                        ),
+
+                    "currency":
+                        created_transaction
+                        .currency,
+
+                    "transaction_type":
+                        created_transaction
+                        .transaction_type,
+
+                    "origin_country":
+                        created_transaction
+                        .origin_country,
+
+                    "destination_country":
+                        created_transaction
+                        .destination_country,
+
+                    "status":
+                        created_transaction
+                        .status,
+                },
+            )
+
+            return created_transaction
 
         except IntegrityError:
             db.rollback()

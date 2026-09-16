@@ -2,6 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.clients.event_client import publish_event
 from app.compliance.engine import (
     analyze_transaction,
 )
@@ -81,13 +82,53 @@ class ComplianceService:
 
         try:
 
-            return (
+            created_assessment = (
                 RiskAssessmentRepository
                 .create(
                     db,
                     assessment,
                 )
             )
+
+            publish_event(
+                event_type=(
+                    "RISK_ASSESSMENT_CREATED"
+                ),
+                transaction_ref=(
+                    transaction.transaction_ref
+                ),
+                payload={
+                    "risk_score":
+                        created_assessment
+                        .risk_score,
+
+                    "risk_level":
+                        created_assessment
+                        .risk_level,
+
+                    "rule_version":
+                        created_assessment
+                        .rule_version,
+
+                    "matched_rules": [
+                        {
+                            "rule_code":
+                                match.rule_code,
+
+                            "score_contribution":
+                                match.score_contribution,
+                        }
+
+                        for match
+                        in (
+                            created_assessment
+                            .rule_matches
+                        )
+                    ],
+                },
+            )
+
+            return created_assessment
 
         except IntegrityError:
 
