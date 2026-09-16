@@ -6,3 +6,4 @@ psycopg[binary]
 pymongo
 SQLAlchemy>=2.0,<3.0
 Faker>=30,<40
+chromadb-client

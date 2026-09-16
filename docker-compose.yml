@@ -102,6 +102,7 @@ services:
 
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
+      CHROMA_COLLECTION: ${CHROMA_COLLECTION}
 
       EVENT_SERVICE_URL: http://event-service:3001
 

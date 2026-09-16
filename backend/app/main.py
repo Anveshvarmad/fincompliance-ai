@@ -9,6 +9,7 @@ from app.settings import settings
 from app.api.customers import router as customers_router
 from app.api.transactions import router as transactions_router
 from app.api.compliance import router as compliance_router
+from app.api.knowledge import router as knowledge_router
 
 
 
@@ -21,6 +22,7 @@ app = FastAPI(
 app.include_router(customers_router)
 app.include_router(transactions_router)
 app.include_router(compliance_router)
+app.include_router(knowledge_router)
 
 
 

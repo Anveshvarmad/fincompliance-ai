@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     chroma_host: str = "chroma"
     chroma_port: int = 8000
+    chroma_collection: str = "compliance_policies_v1"
 
     event_service_url: str = "http://event-service:3001"
 
