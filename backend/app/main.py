@@ -6,12 +6,20 @@ import psycopg
 from pymongo import MongoClient
 
 from app.settings import settings
+from app.api.customers import router as customers_router
+from app.api.transactions import router as transactions_router
+
 
 
 app = FastAPI(
     title="FinCompliance AI API",
     version="0.1.0"
 )
+
+
+app.include_router(customers_router)
+app.include_router(transactions_router)
+
 
 
 app.add_middleware(
