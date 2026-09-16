@@ -1,6 +1,7 @@
 import argparse
 
 import app.models
+import app.ai_models
 from app.db import Base, engine
 
 
