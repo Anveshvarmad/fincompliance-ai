@@ -1,18 +1,211 @@
 import {
-  Filter,
+  ChevronLeft,
+  ChevronRight,
+  RefreshCw,
   Search,
-  SlidersHorizontal,
 } from "lucide-react";
+
+import {
+  useEffect,
+  useState,
+} from "react";
 
 import PageHeader
   from "../components/PageHeader";
 
 import {
-  transactions,
-} from "../data/mockData";
+  getTransactions,
+} from "../api/transactions";
+
+
+const PAGE_SIZE = 20;
+
+
+function formatMoney(
+  amount,
+  currency,
+) {
+
+  const value =
+    Number(amount);
+
+  try {
+
+    return new Intl.NumberFormat(
+      "en-US",
+      {
+        style: "currency",
+        currency,
+      }
+    ).format(value);
+
+  } catch {
+
+    return `${value.toFixed(2)} ${currency}`;
+  }
+}
+
+
+function formatType(
+  value
+) {
+
+  return value
+    .split("_")
+    .map(
+      word =>
+        word.charAt(0)
+          .toUpperCase()
+        + word.slice(1)
+    )
+    .join(" ");
+}
 
 
 export default function TransactionsPage() {
+
+  const [
+    transactions,
+    setTransactions,
+  ] = useState([]);
+
+
+  const [
+    total,
+    setTotal,
+  ] = useState(0);
+
+
+  const [
+    offset,
+    setOffset,
+  ] = useState(0);
+
+
+  const [
+    search,
+    setSearch,
+  ] = useState("");
+
+
+  const [
+    transactionType,
+    setTransactionType,
+  ] = useState("");
+
+
+  const [
+    status,
+    setStatus,
+  ] = useState("");
+
+
+  const [
+    minAmount,
+    setMinAmount,
+  ] = useState("");
+
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+
+  const [
+    error,
+    setError,
+  ] = useState(null);
+
+
+  async function loadTransactions() {
+
+    setLoading(true);
+    setError(null);
+
+
+    try {
+
+      const data =
+        await getTransactions({
+          limit:
+            PAGE_SIZE,
+
+          offset,
+
+          customerRef:
+            search,
+
+          transactionType,
+
+          status,
+
+          minAmount,
+        });
+
+
+      setTransactions(
+        data.items
+      );
+
+      setTotal(
+        data.total
+      );
+
+    } catch (err) {
+
+      setError(
+        err.message
+      );
+
+    } finally {
+
+      setLoading(false);
+    }
+  }
+
+
+  useEffect(
+    () => {
+
+      loadTransactions();
+
+    },
+    [
+      offset,
+      transactionType,
+      status,
+      minAmount,
+    ]
+  );
+
+
+  function submitSearch(
+    event
+  ) {
+
+    event.preventDefault();
+
+    setOffset(0);
+
+    loadTransactions();
+  }
+
+
+  const currentPage =
+    Math.floor(
+      offset / PAGE_SIZE
+    ) + 1;
+
+
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        total / PAGE_SIZE
+      )
+    );
+
 
   return (
     <>
@@ -20,42 +213,157 @@ export default function TransactionsPage() {
       <PageHeader
         eyebrow="TRANSACTION INTELLIGENCE"
         title="Transaction explorer"
-        description="Search, filter and inspect financial
-        activity across monitored workflows."
+        description="Live financial activity from the FinCompliance transaction API."
       />
 
 
-      <div className="terminal-toolbar">
+      <form
+        className="terminal-toolbar"
+        onSubmit={submitSearch}
+      >
 
         <div className="terminal-search">
 
           <Search size={16} />
 
           <input
-            placeholder="Search transaction ID, customer..."
+            value={search}
+            onChange={
+              event =>
+                setSearch(
+                  event.target.value
+                )
+            }
+            placeholder="Customer reference..."
           />
 
         </div>
 
 
-        <button className="secondary-button">
+        <select
+          className="terminal-select"
+          value={transactionType}
+          onChange={
+            event => {
+              setOffset(0);
 
-          <Filter size={16} />
+              setTransactionType(
+                event.target.value
+              );
+            }
+          }
+        >
 
-          Filters
+          <option value="">
+            All transaction types
+          </option>
+
+          <option value="wire_transfer">
+            Wire transfer
+          </option>
+
+          <option value="card_payment">
+            Card payment
+          </option>
+
+          <option value="ach_transfer">
+            ACH transfer
+          </option>
+
+          <option value="cash_withdrawal">
+            Cash withdrawal
+          </option>
+
+          <option value="account_transfer">
+            Account transfer
+          </option>
+
+        </select>
+
+
+        <select
+          className="terminal-select"
+          value={status}
+          onChange={
+            event => {
+              setOffset(0);
+
+              setStatus(
+                event.target.value
+              );
+            }
+          }
+        >
+
+          <option value="">
+            All statuses
+          </option>
+
+          <option value="completed">
+            Completed
+          </option>
+
+          <option value="pending">
+            Pending
+          </option>
+
+          <option value="failed">
+            Failed
+          </option>
+
+        </select>
+
+
+        <input
+          className="amount-filter"
+          type="number"
+          min="0"
+          value={minAmount}
+          onChange={
+            event => {
+              setOffset(0);
+
+              setMinAmount(
+                event.target.value
+              );
+            }
+          }
+          placeholder="Min amount"
+        />
+
+
+        <button
+          type="button"
+          className="secondary-button refresh-button"
+          onClick={
+            loadTransactions
+          }
+        >
+
+          <RefreshCw size={16} />
+
+          Refresh
 
         </button>
 
+      </form>
 
-        <button className="secondary-button">
 
-          <SlidersHorizontal size={16} />
+      {error && (
 
-          Columns
+        <div className="api-error">
 
-        </button>
+          <strong>
+            Could not load transactions
+          </strong>
 
-      </div>
+          <span>
+            {error}
+          </span>
+
+        </div>
+
+      )}
 
 
       <section className="transaction-terminal">
@@ -83,70 +391,186 @@ export default function TransactionsPage() {
           </span>
 
           <span>
-            Score
+            Status
           </span>
 
           <span>
-            Risk
-          </span>
-
-          <span>
-            Time
+            Date
           </span>
 
         </div>
 
 
-        {transactions.map(
-          (transaction) => (
+        {loading && (
 
-            <div
-              className="terminal-row"
-              key={transaction.id}
-            >
+          <div className="terminal-loading">
 
-              <strong>
-                {transaction.id}
-              </strong>
+            <div className="loading-ring" />
 
-              <span>
-                {transaction.customer}
-              </span>
+            Loading live transactions...
 
-              <strong>
-                {transaction.amount}
-              </strong>
+          </div>
 
-              <span>
-                {transaction.type}
-              </span>
+        )}
 
-              <span className="route-pill">
-                {transaction.route}
-              </span>
 
-              <span className="score-cell">
-                {transaction.score}
-              </span>
+        {
+          !loading &&
+          transactions.length === 0 &&
+          (
 
-              <span
-                className={
-                  `risk-badge ${transaction.risk.toLowerCase()}`
-                }
-              >
-                {transaction.risk}
-              </span>
+            <div className="terminal-loading">
 
-              <span className="muted">
-                {transaction.time}
-              </span>
+              No transactions found.
 
             </div>
 
           )
-        )}
+        }
+
+
+        {
+          !loading &&
+          transactions.map(
+            transaction => (
+
+              <div
+                className="terminal-row live-transaction-row"
+                key={transaction.id}
+              >
+
+                <strong>
+                  {transaction.transaction_ref}
+                </strong>
+
+                <span className="mono-value">
+                  {
+                    transaction.customer_id
+                      .slice(0, 8)
+                  }...
+                </span>
+
+                <strong>
+                  {
+                    formatMoney(
+                      transaction.amount,
+                      transaction.currency,
+                    )
+                  }
+                </strong>
+
+                <span>
+                  {
+                    formatType(
+                      transaction.transaction_type
+                    )
+                  }
+                </span>
+
+                <span className="route-pill">
+
+                  {
+                    transaction.origin_country
+                  }
+
+                  {" → "}
+
+                  {
+                    transaction.destination_country
+                  }
+
+                </span>
+
+                <span
+                  className={
+                    `status-badge ${transaction.status}`
+                  }
+                >
+                  {transaction.status}
+                </span>
+
+                <span className="muted">
+
+                  {
+                    new Date(
+                      transaction.occurred_at
+                    )
+                    .toLocaleDateString()
+                  }
+
+                </span>
+
+              </div>
+
+            )
+          )
+        }
 
       </section>
+
+
+      <div className="pagination-bar">
+
+        <span>
+          {total.toLocaleString()}
+          {" "}
+          transactions
+        </span>
+
+
+        <div>
+
+          <button
+            disabled={
+              offset === 0
+            }
+            onClick={
+              () =>
+                setOffset(
+                  Math.max(
+                    0,
+                    offset - PAGE_SIZE
+                  )
+                )
+            }
+          >
+
+            <ChevronLeft size={15} />
+
+          </button>
+
+
+          <span>
+
+            {currentPage}
+
+            {" / "}
+
+            {totalPages}
+
+          </span>
+
+
+          <button
+            disabled={
+              currentPage >=
+              totalPages
+            }
+            onClick={
+              () =>
+                setOffset(
+                  offset + PAGE_SIZE
+                )
+            }
+          >
+
+            <ChevronRight size={15} />
+
+          </button>
+
+        </div>
+
+      </div>
 
     </>
   );
