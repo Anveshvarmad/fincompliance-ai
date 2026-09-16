@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic-settings
+httpx
+psycopg[binary]
+pymongo
+SQLAlchemy>=2.0,<3.0
+Faker>=30,<40

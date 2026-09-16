@@ -1,0 +1,160 @@
+services:
+
+  postgres:
+    image: postgres:17-alpine
+
+    container_name: fincompliance-postgres
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"
+        ]
+
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  mongo:
+    image: mongo:8
+
+    container_name: fincompliance-mongo
+
+    ports:
+      - "27017:27017"
+
+    volumes:
+      - mongo_data:/data/db
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "mongosh",
+          "--eval",
+          "db.adminCommand('ping')"
+        ]
+
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
+  chroma:
+    image: chromadb/chroma:latest
+
+    container_name: fincompliance-chroma
+
+    ports:
+      - "8001:8000"
+
+    volumes:
+      - chroma_data:/data
+
+
+  event-service:
+    build:
+      context: ./event-service
+
+    container_name: fincompliance-event-service
+
+    environment:
+      PORT: 3001
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB: ${MONGO_DB}
+
+    ports:
+      - "3001:3001"
+
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+
+  backend:
+    build:
+      context: ./backend
+
+    container_name: fincompliance-backend
+
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+
+      MONGO_URL: ${MONGO_URL}
+      MONGO_DB: ${MONGO_DB}
+
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+
+      EVENT_SERVICE_URL: http://event-service:3001
+
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL}
+
+    ports:
+      - "8000:8000"
+
+    volumes:
+      - ./backend/app:/app/app
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+      mongo:
+        condition: service_healthy
+
+      event-service:
+        condition: service_started
+
+      chroma:
+        condition: service_started
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+
+  frontend:
+    build:
+      context: ./frontend
+
+    container_name: fincompliance-frontend
+
+    environment:
+      VITE_API_URL: http://localhost:8000
+
+    ports:
+      - "5173:5173"
+
+    volumes:
+      - ./frontend/src:/app/src
+
+    depends_on:
+      - backend
+
+
+volumes:
+
+  postgres_data:
+
+  mongo_data:
+
+  chroma_data:

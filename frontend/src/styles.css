@@ -1,0 +1,55 @@
+body {
+  margin: 0;
+  font-family:
+    Arial,
+    Helvetica,
+    sans-serif;
+
+  background: #f4f6f8;
+  color: #1f2937;
+}
+
+
+.container {
+  width: min(900px, 90%);
+  margin: 60px auto;
+}
+
+
+h1 {
+  margin-bottom: 8px;
+}
+
+
+.services {
+  display: grid;
+
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(220px, 1fr)
+    );
+
+  gap: 16px;
+  margin-top: 24px;
+}
+
+
+.service-card {
+  background: white;
+  padding: 18px;
+  border-radius: 8px;
+
+  display: flex;
+  justify-content: space-between;
+
+  box-shadow:
+    0 2px 8px
+    rgba(0, 0, 0, 0.08);
+}
+
+
+.error {
+  padding: 12px;
+  background: #fee2e2;
+}
