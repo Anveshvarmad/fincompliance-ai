@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import (
+    Session,
+    selectinload,
+)
 
 from app.models import Transaction
 
@@ -29,6 +32,28 @@ class TransactionRepository:
 
         statement = (
             select(Transaction)
+            .where(
+                Transaction.transaction_ref
+                == transaction_ref
+            )
+        )
+
+        return db.scalar(statement)
+
+
+    @staticmethod
+    def get_by_ref_with_customer(
+        db: Session,
+        transaction_ref: str,
+    ) -> Transaction | None:
+
+        statement = (
+            select(Transaction)
+            .options(
+                selectinload(
+                    Transaction.customer
+                )
+            )
             .where(
                 Transaction.transaction_ref
                 == transaction_ref
@@ -103,9 +128,10 @@ class TransactionRepository:
             .where(*filters)
         )
 
-        total = db.scalar(
-            count_statement
-        ) or 0
+        total = (
+            db.scalar(count_statement)
+            or 0
+        )
 
         statement = (
             select(Transaction)
@@ -121,4 +147,7 @@ class TransactionRepository:
             db.scalars(statement)
         )
 
-        return total, transactions
+        return (
+            total,
+            transactions,
+        )
