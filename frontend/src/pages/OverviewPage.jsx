@@ -1,10 +1,30 @@
 import {
   Activity,
   AlertTriangle,
-  ArrowUpRight,
+  ArrowRight,
   BrainCircuit,
+  CheckCircle2,
   CircleDollarSign,
+  Database,
+  Gauge,
+  LoaderCircle,
+  Radio,
+  RefreshCw,
+  Server,
+  ShieldCheck,
+  Users,
 } from "lucide-react";
+
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import {
+  useNavigate,
+} from "react-router-dom";
 
 import {
   Area,
@@ -13,9 +33,8 @@ import {
   ResponsiveContainer,
   Tooltip,
   XAxis,
+  YAxis,
 } from "recharts";
-
-import { motion } from "framer-motion";
 
 import MetricCard
   from "../components/MetricCard";
@@ -24,105 +43,565 @@ import PageHeader
   from "../components/PageHeader";
 
 import {
-  transactions,
-} from "../data/mockData";
+  getCommandCenterData,
+} from "../api/overview";
 
 
-const chartData = [
-  { time: "08:00", risk: 18 },
-  { time: "09:00", risk: 27 },
-  { time: "10:00", risk: 22 },
-  { time: "11:00", risk: 46 },
-  { time: "12:00", risk: 39 },
-  { time: "13:00", risk: 71 },
-  { time: "14:00", risk: 56 },
-];
+function formatMoney(
+  amount,
+  currency,
+) {
+
+  const value =
+    Number(amount);
+
+  try {
+
+    return new Intl.NumberFormat(
+      "en-US",
+      {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }
+    ).format(value);
+
+  } catch {
+
+    return `${value.toFixed(0)} ${currency}`;
+  }
+}
+
+
+function formatType(
+  value = ""
+) {
+
+  return value
+    .split("_")
+    .map(
+      word =>
+        word.charAt(0)
+          .toUpperCase()
+        + word.slice(1)
+    )
+    .join(" ");
+}
+
+
+function riskClass(
+  value = ""
+) {
+
+  return (
+    value
+      .toLowerCase()
+    || "unassessed"
+  );
+}
 
 
 export default function OverviewPage() {
+
+  const navigate =
+    useNavigate();
+
+
+  const [
+    data,
+    setData,
+  ] = useState(null);
+
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(true);
+
+
+  const [
+    error,
+    setError,
+  ] = useState(null);
+
+
+  const loadOverview =
+    useCallback(
+      async () => {
+
+        setLoading(true);
+        setError(null);
+
+
+        try {
+
+          const result =
+            await getCommandCenterData();
+
+
+          setData(
+            result
+          );
+
+
+          if (
+            !result.dashboard
+          ) {
+
+            setError(
+              result.errors[0]
+              || "Dashboard data could not be loaded."
+            );
+          }
+
+        } catch (err) {
+
+          setError(
+            err.message
+            || "Command center could not be loaded."
+          );
+
+        } finally {
+
+          setLoading(false);
+        }
+
+      },
+      []
+    );
+
+
+  useEffect(
+    () => {
+
+      loadOverview();
+
+    },
+    [loadOverview]
+  );
+
+
+  const metrics =
+    data?.dashboard
+      ?.metrics
+    || {};
+
+
+  const distribution =
+    data?.dashboard
+      ?.risk_distribution
+    || {
+      low: 0,
+      medium: 0,
+      high: 0,
+      critical: 0,
+    };
+
+
+  const riskActivity =
+    data?.dashboard
+      ?.risk_activity
+    || [];
+
+
+  const recentTransactions =
+    data?.dashboard
+      ?.recent_transactions
+    || [];
+
+
+  const auditEventCount =
+    data?.auditEvents
+      ?.total
+    || 0;
+
+
+  const totalRisk =
+    useMemo(
+      () => {
+
+        return (
+          distribution.low
+          + distribution.medium
+          + distribution.high
+          + distribution.critical
+        );
+
+      },
+      [distribution]
+    );
+
+
+  const services =
+    useMemo(
+      () => {
+
+        const backendServices =
+          data?.backendHealth
+            ?.services
+          || {};
+
+
+        const values = [
+          {
+            name:
+              "FastAPI",
+
+            state:
+              data?.backendHealth
+                ? "up"
+                : "down",
+
+            icon:
+              Server,
+          },
+
+          {
+            name:
+              "PostgreSQL",
+
+            state:
+              backendServices.postgres
+              || "unknown",
+
+            icon:
+              Database,
+          },
+
+          {
+            name:
+              "MongoDB",
+
+            state:
+              backendServices.mongo
+              || data?.auditHealth?.mongo
+              || "unknown",
+
+            icon:
+              Database,
+          },
+
+          {
+            name:
+              "ChromaDB",
+
+            state:
+              backendServices.chroma
+              || "unknown",
+
+            icon:
+              BrainCircuit,
+          },
+
+          {
+            name:
+              "Ollama",
+
+            state:
+              backendServices.ollama
+              || "unknown",
+
+            icon:
+              BrainCircuit,
+          },
+
+          {
+            name:
+              "Event Service",
+
+            state:
+              data?.auditHealth?.status
+              || backendServices.event_service
+              || "unknown",
+
+            icon:
+              Radio,
+          },
+        ];
+
+
+        return values;
+
+      },
+      [data]
+    );
+
+
+  const operationalServices =
+    services.filter(
+      service =>
+        service.state
+        === "up"
+    ).length;
+
+
+  if (
+    loading
+    &&
+    !data
+  ) {
+
+    return (
+      <div className="overview-live-loading">
+
+        <LoaderCircle
+          size={30}
+          className="spin-icon"
+        />
+
+        <strong>
+          Building command center
+        </strong>
+
+        <span>
+          Aggregating PostgreSQL,
+          compliance, AI and MongoDB
+          telemetry...
+        </span>
+
+      </div>
+    );
+  }
+
 
   return (
     <>
 
       <PageHeader
-        eyebrow="COMMAND CENTER"
+        eyebrow="LIVE COMMAND CENTER"
         title="Financial intelligence,
-        without the noise."
-        description="Monitor transaction activity,
-        risk signals, AI analysis and compliance
-        infrastructure from one operational view."
+        in one operational view."
+        description="Real transaction, compliance,
+        AI, event and infrastructure telemetry
+        across the FinCompliance platform."
       >
-        <button className="primary-button">
-          Live Monitor
-          <ArrowUpRight size={16} />
+
+        <button
+          className="secondary-button overview-refresh-button"
+          onClick={
+            loadOverview
+          }
+          disabled={
+            loading
+          }
+        >
+
+          {
+            loading
+              ? (
+                <LoaderCircle
+                  className="spin-icon"
+                  size={15}
+                />
+              )
+              : (
+                <RefreshCw
+                  size={15}
+                />
+              )
+          }
+
+          Refresh
+
         </button>
+
       </PageHeader>
 
 
-      <section className="metric-grid">
+      {error && (
+
+        <div className="api-error">
+
+          <strong>
+            Command center warning
+          </strong>
+
+          <span>
+            {error}
+          </span>
+
+        </div>
+
+      )}
+
+
+      <section className="metric-grid live-overview-metrics">
 
         <MetricCard
-          label="TRANSACTIONS TODAY"
-          value="18,492"
-          detail="+8.4% from yesterday"
-          icon={CircleDollarSign}
+          label="TRANSACTIONS"
+          value={
+            (
+              metrics
+                .transactions_total
+              || 0
+            )
+            .toLocaleString()
+          }
+          detail={
+            `${metrics.assessment_coverage || 0}% analyzed`
+          }
+          icon={
+            CircleDollarSign
+          }
         />
 
+
         <MetricCard
-          label="HIGH RISK"
-          value="127"
-          detail="0.68% of monitored activity"
-          icon={AlertTriangle}
+          label="HIGH + CRITICAL"
+          value={
+            (
+              metrics
+                .high_risk_total
+              || 0
+            )
+            .toLocaleString()
+          }
+          detail="Deterministic risk classifications"
+          icon={
+            AlertTriangle
+          }
           accent="danger"
         />
 
+
         <MetricCard
-          label="AI REVIEWS"
-          value="4,821"
-          detail="97.6% successfully grounded"
-          icon={BrainCircuit}
+          label="AI EXPLANATIONS"
+          value={
+            (
+              metrics
+                .ai_explanations_total
+              || 0
+            )
+            .toLocaleString()
+          }
+          detail={
+            `${metrics.ai_coverage || 0}% of assessments explained`
+          }
+          icon={
+            BrainCircuit
+          }
           accent="violet"
         />
 
+
         <MetricCard
-          label="SYSTEM HEALTH"
-          value="99.98%"
-          detail="6 services operational"
-          icon={Activity}
+          label="SERVICE HEALTH"
+          value={
+            `${operationalServices}/${services.length}`
+          }
+          detail="Live infrastructure checks"
+          icon={
+            Activity
+          }
           accent="success"
         />
 
       </section>
 
 
-      <section className="overview-grid">
+      <section className="command-center-secondary-metrics">
 
-        <motion.div
-          className="glass-panel risk-wave-panel"
-          initial={{
-            opacity: 0,
-            y: 30,
-          }}
-          animate={{
-            opacity: 1,
-            y: 0,
-          }}
-          transition={{
-            delay: 0.15,
-          }}
-        >
+        <div>
+
+          <Users size={16} />
+
+          <span>
+            CUSTOMERS
+          </span>
+
+          <strong>
+            {
+              (
+                metrics
+                  .customers_total
+                || 0
+              )
+              .toLocaleString()
+            }
+          </strong>
+
+        </div>
+
+
+        <div>
+
+          <ShieldCheck size={16} />
+
+          <span>
+            RISK ASSESSMENTS
+          </span>
+
+          <strong>
+            {
+              (
+                metrics
+                  .assessments_total
+                || 0
+              )
+              .toLocaleString()
+            }
+          </strong>
+
+        </div>
+
+
+        <div>
+
+          <Gauge size={16} />
+
+          <span>
+            AVG RISK SCORE
+          </span>
+
+          <strong>
+            {
+              metrics
+                .average_risk_score
+              || 0
+            }
+          </strong>
+
+        </div>
+
+
+        <div>
+
+          <Radio size={16} />
+
+          <span>
+            AUDIT EVENTS
+          </span>
+
+          <strong>
+            {
+              auditEventCount
+                .toLocaleString()
+            }
+          </strong>
+
+        </div>
+
+      </section>
+
+
+      <section className="live-overview-grid">
+
+        <article className="glass-panel live-risk-chart">
 
           <div className="panel-heading">
 
             <div>
+
               <span className="panel-label">
-                RISK PULSE
+                RISK TELEMETRY
               </span>
 
               <h3>
-                Risk activity
+                Recent assessment scores
               </h3>
+
             </div>
+
 
             <span className="live-indicator">
               LIVE
@@ -131,202 +610,490 @@ export default function OverviewPage() {
           </div>
 
 
-          <div className="chart-shell">
+          {
+            riskActivity.length
+            > 0
+            ? (
 
-            <ResponsiveContainer
-              width="100%"
-              height="100%"
-            >
+              <div className="chart-shell">
 
-              <AreaChart
-                data={chartData}
-              >
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                >
 
-                <defs>
-
-                  <linearGradient
-                    id="riskGradient"
-                    x1="0"
-                    y1="0"
-                    x2="0"
-                    y2="1"
+                  <AreaChart
+                    data={
+                      riskActivity
+                    }
                   >
 
-                    <stop
-                      offset="5%"
-                      stopColor="#7c5cff"
-                      stopOpacity={0.45}
+                    <defs>
+
+                      <linearGradient
+                        id="liveRiskGradient"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+
+                        <stop
+                          offset="5%"
+                          stopColor="#8b73ff"
+                          stopOpacity={0.45}
+                        />
+
+                        <stop
+                          offset="95%"
+                          stopColor="#8b73ff"
+                          stopOpacity={0}
+                        />
+
+                      </linearGradient>
+
+                    </defs>
+
+
+                    <CartesianGrid
+                      strokeDasharray="3 3"
+                      stroke="rgba(255,255,255,.05)"
+                      vertical={false}
                     />
 
-                    <stop
-                      offset="95%"
-                      stopColor="#7c5cff"
-                      stopOpacity={0}
+
+                    <XAxis
+                      dataKey="time"
+                      stroke="#596275"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={9}
                     />
 
-                  </linearGradient>
 
-                </defs>
+                    <YAxis
+                      domain={[
+                        0,
+                        100,
+                      ]}
+                      stroke="#596275"
+                      tickLine={false}
+                      axisLine={false}
+                      fontSize={9}
+                    />
 
-                <CartesianGrid
-                  strokeDasharray="3 3"
-                  stroke="rgba(255,255,255,.05)"
-                  vertical={false}
+
+                    <Tooltip
+                      contentStyle={{
+                        background:
+                          "#0d1018",
+
+                        border:
+                          "1px solid rgba(255,255,255,.08)",
+
+                        borderRadius:
+                          10,
+
+                        fontSize:
+                          10,
+                      }}
+                    />
+
+
+                    <Area
+                      type="monotone"
+                      dataKey="score"
+                      stroke="#8b73ff"
+                      strokeWidth={2}
+                      fill="url(#liveRiskGradient)"
+                    />
+
+                  </AreaChart>
+
+                </ResponsiveContainer>
+
+              </div>
+
+            )
+            : (
+
+              <div className="overview-empty-chart">
+
+                <ShieldCheck
+                  size={26}
                 />
 
-                <XAxis
-                  dataKey="time"
-                  stroke="#596275"
-                  tickLine={false}
-                  axisLine={false}
-                />
+                <strong>
+                  No assessments yet
+                </strong>
 
-                <Tooltip
-                  contentStyle={{
-                    background:
-                      "#0d1018",
-                    border:
-                      "1px solid rgba(255,255,255,.08)",
-                    borderRadius:
-                      12,
-                  }}
-                />
+                <span>
+                  Analyze transactions to
+                  populate live risk telemetry.
+                </span>
 
-                <Area
-                  type="monotone"
-                  dataKey="risk"
-                  stroke="#8b73ff"
-                  strokeWidth={2}
-                  fill="url(#riskGradient)"
-                />
+              </div>
 
-              </AreaChart>
+            )
+          }
 
-            </ResponsiveContainer>
-
-          </div>
-
-        </motion.div>
+        </article>
 
 
-        <motion.div
-          className="glass-panel threat-orbit-panel"
-          initial={{
-            opacity: 0,
-            scale: 0.94,
-          }}
-          animate={{
-            opacity: 1,
-            scale: 1,
-          }}
-        >
+        <article className="glass-panel live-distribution-panel">
 
-          <span className="panel-label">
-            RISK ORBIT
-          </span>
+          <div className="panel-heading">
 
-          <div className="risk-orbit">
+            <div>
 
-            <div className="orbit orbit-one" />
-            <div className="orbit orbit-two" />
-
-            <div className="orbit-core">
-
-              <strong>
-                65
-              </strong>
-
-              <span>
-                HIGH
+              <span className="panel-label">
+                RISK DISTRIBUTION
               </span>
+
+              <h3>
+                Assessment mix
+              </h3>
 
             </div>
 
           </div>
 
-          <p>
-            Current weighted risk index across
-            monitored workflows.
-          </p>
 
-        </motion.div>
+          <div className="distribution-core">
+
+            <div className="distribution-orbit">
+
+              <div className="distribution-center">
+
+                <strong>
+                  {
+                    totalRisk
+                      .toLocaleString()
+                  }
+                </strong>
+
+                <span>
+                  ASSESSED
+                </span>
+
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div className="distribution-list">
+
+            {
+              [
+                [
+                  "low",
+                  distribution.low,
+                ],
+                [
+                  "medium",
+                  distribution.medium,
+                ],
+                [
+                  "high",
+                  distribution.high,
+                ],
+                [
+                  "critical",
+                  distribution.critical,
+                ],
+              ]
+              .map(
+                ([
+                  level,
+                  count,
+                ]) => {
+
+                  const percentage =
+                    totalRisk
+                    ? Math.round(
+                        (
+                          count
+                          / totalRisk
+                        )
+                        * 100
+                      )
+                    : 0;
+
+
+                  return (
+
+                    <div
+                      key={level}
+                    >
+
+                      <div>
+
+                        <span
+                          className={
+                            `distribution-dot ${level}`
+                          }
+                        />
+
+                        <strong>
+                          {
+                            level
+                              .toUpperCase()
+                          }
+                        </strong>
+
+                      </div>
+
+
+                      <div>
+
+                        <span>
+                          {percentage}%
+                        </span>
+
+                        <b>
+                          {count}
+                        </b>
+
+                      </div>
+
+                    </div>
+
+                  );
+                }
+              )
+            }
+
+          </div>
+
+        </article>
 
       </section>
 
 
-      <section className="glass-panel">
+      <section className="overview-bottom-grid">
 
-        <div className="panel-heading">
+        <article className="glass-panel live-recent-panel">
 
-          <div>
+          <div className="panel-heading">
 
-            <span className="panel-label">
-              RECENT ACTIVITY
-            </span>
+            <div>
 
-            <h3>
-              Transactions requiring attention
-            </h3>
+              <span className="panel-label">
+                RECENT ACTIVITY
+              </span>
+
+              <h3>
+                Latest transactions
+              </h3>
+
+            </div>
+
+
+            <button
+              className="text-button"
+              onClick={
+                () =>
+                  navigate(
+                    "/transactions"
+                  )
+              }
+            >
+
+              Open explorer
+
+            </button>
 
           </div>
 
-          <button className="text-button">
-            View all
-          </button>
 
-        </div>
+          <div className="live-overview-table">
+
+            {
+              recentTransactions
+                .map(
+                  transaction => (
+
+                    <button
+                      key={
+                        transaction
+                          .transaction_ref
+                      }
+                      className="live-overview-row"
+                      onClick={
+                        () =>
+                          navigate(
+                            `/transactions/${transaction.transaction_ref}`
+                          )
+                      }
+                    >
+
+                      <div>
+
+                        <strong>
+                          {
+                            transaction
+                              .transaction_ref
+                          }
+                        </strong>
+
+                        <span>
+                          {
+                            formatType(
+                              transaction
+                                .transaction_type
+                            )
+                          }
+                        </span>
+
+                      </div>
 
 
-        <div className="compact-table">
+                      <span>
+                        {
+                          transaction
+                            .origin_country
+                        }
 
-          {transactions
-            .slice(0, 4)
-            .map(
-              (transaction) => (
+                        {" → "}
 
-                <div
-                  className="compact-row"
-                  key={transaction.id}
-                >
+                        {
+                          transaction
+                            .destination_country
+                        }
+                      </span>
 
-                  <div>
 
-                    <strong>
-                      {transaction.id}
-                    </strong>
+                      <strong>
+                        {
+                          formatMoney(
+                            transaction.amount,
+                            transaction.currency,
+                          )
+                        }
+                      </strong>
 
-                    <span>
-                      {transaction.customer}
-                    </span>
 
-                  </div>
+                      <span
+                        className={
+                          `risk-badge ${riskClass(
+                            transaction.risk_level
+                          )}`
+                        }
+                      >
 
-                  <span>
-                    {transaction.type}
-                  </span>
+                        {
+                          transaction
+                            .risk_level
+                        }
 
-                  <span>
-                    {transaction.route}
-                  </span>
+                      </span>
 
-                  <strong>
-                    {transaction.amount}
-                  </strong>
 
-                  <span
-                    className={
-                      `risk-badge ${transaction.risk.toLowerCase()}`
-                    }
-                  >
-                    {transaction.risk}
-                  </span>
+                      <ArrowRight
+                        size={14}
+                      />
 
-                </div>
+                    </button>
 
+                  )
+                )
+            }
+
+          </div>
+
+        </article>
+
+
+        <article className="glass-panel service-health-panel">
+
+          <div className="panel-heading">
+
+            <div>
+
+              <span className="panel-label">
+                INFRASTRUCTURE
+              </span>
+
+              <h3>
+                Service mesh
+              </h3>
+
+            </div>
+
+
+            <CheckCircle2
+              size={18}
+            />
+
+          </div>
+
+
+          <div className="service-health-list">
+
+            {
+              services.map(
+                ({
+                  name,
+                  state,
+                  icon: Icon,
+                }) => {
+
+                  const online =
+                    state
+                    === "up";
+
+
+                  return (
+
+                    <div
+                      key={name}
+                    >
+
+                      <div className="service-identity">
+
+                        <div>
+                          <Icon
+                            size={15}
+                          />
+                        </div>
+
+                        <strong>
+                          {name}
+                        </strong>
+
+                      </div>
+
+
+                      <span
+                        className={
+                          online
+                            ? "service-state online"
+                            : "service-state"
+                        }
+                      >
+
+                        <i />
+
+                        {
+                          online
+                            ? "Operational"
+                            : state
+                        }
+
+                      </span>
+
+                    </div>
+
+                  );
+                }
               )
-            )}
+            }
 
-        </div>
+          </div>
+
+        </article>
 
       </section>
 

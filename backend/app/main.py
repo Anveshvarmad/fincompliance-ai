@@ -1,3 +1,8 @@
+from fastapi import Depends
+from app.api.auth import router as auth_router
+from app.hardening import install_hardening
+from app.security import require_viewer, require_analyst
+from app.api.dashboard import router as dashboard_router
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from datetime import datetime, timezone
@@ -20,11 +25,11 @@ app = FastAPI(
 )
 
 
-app.include_router(customers_router)
-app.include_router(transactions_router)
-app.include_router(compliance_router)
-app.include_router(knowledge_router)
-app.include_router(ai_router)
+app.include_router(customers_router, dependencies=[Depends(require_viewer)])
+app.include_router(transactions_router, dependencies=[Depends(require_viewer)])
+app.include_router(compliance_router, dependencies=[Depends(require_analyst)])
+app.include_router(knowledge_router, dependencies=[Depends(require_viewer)])
+app.include_router(ai_router, dependencies=[Depends(require_analyst)])
 
 
 
@@ -130,3 +135,9 @@ async def health():
             "ollama": ollama_status
         }
     }
+
+app.include_router(dashboard_router, dependencies=[Depends(require_viewer)])
+
+app.include_router(auth_router)
+
+install_hardening(app)

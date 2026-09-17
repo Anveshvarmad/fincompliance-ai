@@ -4,6 +4,9 @@ import {
   Routes,
 } from "react-router-dom";
 
+import ProtectedRoute
+  from "./auth/ProtectedRoute";
+
 import AppLayout
   from "./layouts/AppLayout";
 
@@ -16,11 +19,17 @@ import AuditPage
 import KnowledgePage
   from "./pages/KnowledgePage";
 
+import LoginPage
+  from "./pages/LoginPage";
+
 import OverviewPage
   from "./pages/OverviewPage";
 
 import RiskPage
   from "./pages/RiskPage";
+
+import TransactionDetailPage
+  from "./pages/TransactionDetailPage";
 
 import TransactionsPage
   from "./pages/TransactionsPage";
@@ -32,50 +41,105 @@ export default function App() {
     <Routes>
 
       <Route
-        element={<AppLayout />}
+        path="/login"
+        element={
+          <LoginPage />
+        }
+      />
+
+
+      <Route
+        element={
+          <ProtectedRoute />
+        }
       >
 
         <Route
-          path="/"
           element={
-            <Navigate
-              to="/overview"
-              replace
-            />
+            <AppLayout />
           }
-        />
+        >
 
-        <Route
-          path="/overview"
-          element={<OverviewPage />}
-        />
+          <Route
+            path="/"
+            element={
+              <Navigate
+                to="/overview"
+                replace
+              />
+            }
+          />
 
-        <Route
-          path="/transactions"
-          element={<TransactionsPage />}
-        />
 
-        <Route
-          path="/risk"
-          element={<RiskPage />}
-        />
+          <Route
+            path="/overview"
+            element={
+              <OverviewPage />
+            }
+          />
 
-        <Route
-          path="/knowledge"
-          element={<KnowledgePage />}
-        />
 
-        <Route
-          path="/ai"
-          element={<AIPage />}
-        />
+          <Route
+            path="/transactions"
+            element={
+              <TransactionsPage />
+            }
+          />
 
-        <Route
-          path="/audit"
-          element={<AuditPage />}
-        />
+
+          <Route
+            path="/transactions/:transactionRef"
+            element={
+              <TransactionDetailPage />
+            }
+          />
+
+
+          <Route
+            path="/risk"
+            element={
+              <RiskPage />
+            }
+          />
+
+
+          <Route
+            path="/knowledge"
+            element={
+              <KnowledgePage />
+            }
+          />
+
+
+          <Route
+            path="/ai"
+            element={
+              <AIPage />
+            }
+          />
+
+
+          <Route
+            path="/audit"
+            element={
+              <AuditPage />
+            }
+          />
+
+        </Route>
 
       </Route>
+
+
+      <Route
+        path="*"
+        element={
+          <Navigate
+            to="/overview"
+            replace
+          />
+        }
+      />
 
     </Routes>
   );

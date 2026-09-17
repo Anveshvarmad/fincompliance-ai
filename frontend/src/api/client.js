@@ -4,16 +4,23 @@ const API_URL =
 
 
 export class APIError extends Error {
+
   constructor(
     message,
     status,
     data = null,
   ) {
+
     super(message);
 
-    this.name = "APIError";
-    this.status = status;
-    this.data = data;
+    this.name =
+      "APIError";
+
+    this.status =
+      status;
+
+    this.data =
+      data;
   }
 }
 
@@ -23,22 +30,39 @@ export async function apiRequest(
   options = {},
 ) {
 
-  const response = await fetch(
-    `${API_URL}${path}`,
-    {
-      headers: {
-        "Content-Type":
-          "application/json",
+  const token =
+    localStorage.getItem(
+      "fincompliance_token"
+    );
 
-        ...(options.headers || {}),
-      },
 
-      ...options,
-    }
-  );
+  const headers = {
+    "Content-Type":
+      "application/json",
+
+    ...(options.headers || {}),
+  };
+
+
+  if (token) {
+
+    headers.Authorization =
+      `Bearer ${token}`;
+  }
+
+
+  const response =
+    await fetch(
+      `${API_URL}${path}`,
+      {
+        ...options,
+        headers,
+      }
+    );
 
 
   let data = null;
+
 
   const contentType =
     response.headers.get(
@@ -47,20 +71,52 @@ export async function apiRequest(
 
 
   if (
-    contentType &&
+    contentType
+    &&
     contentType.includes(
       "application/json"
     )
   ) {
-    data = await response.json();
+
+    data =
+      await response.json();
   }
 
 
   if (!response.ok) {
 
+    if (
+      response.status === 401
+      &&
+      !path.includes(
+        "/auth/login"
+      )
+    ) {
+
+      localStorage.removeItem(
+        "fincompliance_token"
+      );
+
+      localStorage.removeItem(
+        "fincompliance_user"
+      );
+
+
+      if (
+        window.location.pathname
+        !== "/login"
+      ) {
+
+        window.location.assign(
+          "/login"
+        );
+      }
+    }
+
+
     throw new APIError(
-      data?.detail ||
-      `Request failed with status ${response.status}`,
+      data?.detail
+      || `Request failed with status ${response.status}`,
 
       response.status,
 

@@ -10,6 +10,10 @@ import {
   useState,
 } from "react";
 
+import {
+  useNavigate,
+} from "react-router-dom";
+
 import PageHeader
   from "../components/PageHeader";
 
@@ -63,6 +67,10 @@ function formatType(
 
 
 export default function TransactionsPage() {
+
+  const navigate =
+    useNavigate();
+
 
   const [
     transactions,
@@ -192,6 +200,16 @@ export default function TransactionsPage() {
   }
 
 
+  function openTransaction(
+    transactionRef
+  ) {
+
+    navigate(
+      `/transactions/${transactionRef}`
+    );
+  }
+
+
   const currentPage =
     Math.floor(
       offset / PAGE_SIZE
@@ -213,7 +231,7 @@ export default function TransactionsPage() {
       <PageHeader
         eyebrow="TRANSACTION INTELLIGENCE"
         title="Transaction explorer"
-        description="Live financial activity from the FinCompliance transaction API."
+        description="Live financial activity from the FinCompliance transaction API. Select any transaction to open its investigation workspace."
       />
 
 
@@ -435,48 +453,94 @@ export default function TransactionsPage() {
             transaction => (
 
               <div
-                className="terminal-row live-transaction-row"
+                className="terminal-row live-transaction-row clickable-transaction-row"
                 key={transaction.id}
+                role="button"
+                tabIndex={0}
+                onClick={
+                  () =>
+                    openTransaction(
+                      transaction
+                        .transaction_ref
+                    )
+                }
+                onKeyDown={
+                  event => {
+
+                    if (
+                      event.key
+                      === "Enter"
+                      ||
+                      event.key
+                      === " "
+                    ) {
+
+                      openTransaction(
+                        transaction
+                          .transaction_ref
+                      );
+                    }
+                  }
+                }
               >
 
                 <strong>
-                  {transaction.transaction_ref}
+                  {
+                    transaction
+                      .transaction_ref
+                  }
                 </strong>
 
                 <span className="mono-value">
+
                   {
-                    transaction.customer_id
-                      .slice(0, 8)
-                  }...
+                    String(
+                      transaction
+                        .customer_id
+                    )
+                    .slice(
+                      0,
+                      8
+                    )
+                  }
+                  ...
+
                 </span>
 
                 <strong>
+
                   {
                     formatMoney(
                       transaction.amount,
                       transaction.currency,
                     )
                   }
+
                 </strong>
 
                 <span>
+
                   {
                     formatType(
-                      transaction.transaction_type
+                      transaction
+                        .transaction_type
                     )
                   }
+
                 </span>
 
                 <span className="route-pill">
 
                   {
-                    transaction.origin_country
+                    transaction
+                      .origin_country
                   }
 
                   {" → "}
 
                   {
-                    transaction.destination_country
+                    transaction
+                      .destination_country
                   }
 
                 </span>
@@ -486,14 +550,19 @@ export default function TransactionsPage() {
                     `status-badge ${transaction.status}`
                   }
                 >
-                  {transaction.status}
+
+                  {
+                    transaction.status
+                  }
+
                 </span>
 
                 <span className="muted">
 
                   {
                     new Date(
-                      transaction.occurred_at
+                      transaction
+                        .occurred_at
                     )
                     .toLocaleDateString()
                   }
@@ -559,7 +628,8 @@ export default function TransactionsPage() {
             onClick={
               () =>
                 setOffset(
-                  offset + PAGE_SIZE
+                  offset
+                  + PAGE_SIZE
                 )
             }
           >

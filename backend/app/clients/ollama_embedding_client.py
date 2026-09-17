@@ -1,6 +1,12 @@
-from typing import Sequence
+from collections.abc import (
+    Sequence,
+)
 
 import httpx
+
+from app.clients.http_client import (
+    request_with_retry,
+)
 
 from app.settings import settings
 
@@ -15,43 +21,53 @@ def embed_texts(
     texts: Sequence[str],
 ) -> list[list[float]]:
 
-    if not texts:
+    clean_texts = [
+        text.strip()
+        for text in texts
+        if text.strip()
+    ]
+
+
+    if not clean_texts:
+
         return []
 
-    payload = {
-        "model":
-            settings.ollama_embedding_model,
-
-        "input":
-            list(texts),
-    }
 
     try:
 
-        with httpx.Client(
-            timeout=60.0
-        ) as client:
+        response = request_with_retry(
+            "POST",
+            (
+                f"{settings.ollama_base_url}"
+                "/api/embed"
+            ),
+            json={
+                "model":
+                    settings
+                    .ollama_embedding_model,
 
-            response = client.post(
-                (
-                    f"{settings.ollama_base_url}"
-                    "/api/embed"
-                ),
-                json=payload,
-            )
+                "input":
+                    clean_texts,
+            },
+            retries=2,
+            timeout=60.0,
+        )
 
-            response.raise_for_status()
+
+        response.raise_for_status()
+
 
     except httpx.HTTPError as exc:
 
         raise OllamaEmbeddingError(
-            f"Embedding request failed: {exc}"
+            f"Ollama embedding request failed: {exc}"
         ) from exc
 
 
-    data = response.json()
+    payload = response.json()
 
-    embeddings = data.get(
+
+    embeddings = payload.get(
         "embeddings"
     )
 
@@ -63,7 +79,10 @@ def embed_texts(
         )
 
 
-    if len(embeddings) != len(texts):
+    if (
+        len(embeddings)
+        != len(clean_texts)
+    ):
 
         raise OllamaEmbeddingError(
             "Embedding count does not match input count."

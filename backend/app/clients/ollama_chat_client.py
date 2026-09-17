@@ -2,6 +2,10 @@ import json
 
 import httpx
 
+from app.clients.http_client import (
+    request_with_retry,
+)
+
 from app.settings import settings
 
 
@@ -53,19 +57,20 @@ def generate_json_response(
 
     try:
 
-        with httpx.Client(
-            timeout=120.0
-        ) as client:
+        response = request_with_retry(
+            "POST",
+            (
+                f"{settings.ollama_base_url}"
+                "/api/chat"
+            ),
+            json=payload,
+            retries=2,
+            timeout=120.0,
+        )
 
-            response = client.post(
-                (
-                    f"{settings.ollama_base_url}"
-                    "/api/chat"
-                ),
-                json=payload,
-            )
 
-            response.raise_for_status()
+        response.raise_for_status()
+
 
     except httpx.HTTPError as exc:
 
@@ -75,6 +80,7 @@ def generate_json_response(
 
 
     data = response.json()
+
 
     try:
 
@@ -91,7 +97,7 @@ def generate_json_response(
 
     try:
 
-        parsed = json.loads(
+        return json.loads(
             content
         )
 
@@ -100,6 +106,3 @@ def generate_json_response(
         raise OllamaChatError(
             "Ollama returned invalid JSON."
         ) from exc
-
-
-    return parsed

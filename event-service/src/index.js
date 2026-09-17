@@ -17,6 +17,33 @@ const COLLECTION_NAME = "audit_events";
 
 app.use(express.json());
 
+app.use((req, res, next) => {
+  const allowedOrigin =
+    process.env.CORS_ORIGIN ||
+    "http://localhost:5173";
+
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    allowedOrigin
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "GET,POST,OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type"
+  );
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+});
+
 let mongoClient;
 let db;
 let eventsCollection;
