@@ -28,3 +28,7 @@ chroma_data/
 .env
 .dev-credentials
 .DS_Store
+
+.env
+.dev-credentials
+.DS_Store
