@@ -1,0 +1,50 @@
+apiVersion: apps/v1
+kind: Deployment
+
+metadata:
+  name: outbox-worker
+  namespace: fincompliance
+
+spec:
+  replicas: 2
+
+  strategy:
+    type: RollingUpdate
+
+  selector:
+    matchLabels:
+      app: outbox-worker
+
+  template:
+    metadata:
+      labels:
+        app: outbox-worker
+
+    spec:
+      containers:
+        - name: outbox-worker
+
+          image: fincompliance/backend:phase12
+
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - python
+            - -m
+            - app.workers.outbox_worker
+
+          envFrom:
+            - configMapRef:
+                name: fincompliance-config
+
+            - secretRef:
+                name: fincompliance-secrets
+
+          resources:
+            requests:
+              cpu: "75m"
+              memory: "128Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "512Mi"

@@ -1,17 +1,4 @@
 import logging
-import uuid
-from datetime import (
-    datetime,
-    timezone,
-)
-
-import httpx
-
-from app.clients.http_client import (
-    request_with_retry,
-)
-
-from app.settings import settings
 
 
 logger = logging.getLogger(
@@ -26,53 +13,24 @@ def publish_event(
     payload: dict | None = None,
 ) -> bool:
 
-    event = {
-        "event_id":
-            f"EVT-{uuid.uuid4()}",
+    """
+    Compatibility function.
 
-        "event_type":
-            event_type,
+    Phase 11 event delivery is handled by PostgreSQL
+    transactional outbox triggers.
 
-        "transaction_ref":
-            transaction_ref,
+    Business services still call this function so
+    existing application code does not need to change,
+    but no network request occurs here.
+    """
 
-        "source":
-            "fastapi-backend",
+    logger.debug(
+        "Direct event publication skipped; "
+        "transactional outbox handles delivery.",
+        extra={
+            "path":
+                event_type,
+        },
+    )
 
-        "occurred_at":
-            datetime.now(
-                timezone.utc
-            ).isoformat(),
-
-        "payload":
-            payload or {},
-    }
-
-
-    try:
-
-        response = request_with_retry(
-            "POST",
-            (
-                f"{settings.event_service_url}"
-                "/events"
-            ),
-            json=event,
-            retries=2,
-            timeout=5.0,
-        )
-
-
-        response.raise_for_status()
-
-
-        return True
-
-
-    except httpx.HTTPError:
-
-        logger.exception(
-            "Audit event publication failed"
-        )
-
-        return False
+    return True

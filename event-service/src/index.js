@@ -1,425 +1,694 @@
-const express = require("express");
-const { MongoClient } = require("mongodb");
+const express =
+  require("express");
 
-const app = express();
+const {
+  MongoClient,
+} =
+  require("mongodb");
 
-const PORT = Number(process.env.PORT || 3001);
+const amqp =
+  require("amqplib");
+
+
+const PORT =
+  Number(
+    process.env.PORT
+    || 3001
+  );
+
 
 const MONGO_URL =
-  process.env.MONGO_URL ||
-  "mongodb://mongo:27017";
+  process.env.MONGO_URL
+  || "mongodb://mongo:27017";
+
 
 const MONGO_DB =
-  process.env.MONGO_DB ||
-  "fincompliance";
+  process.env.MONGO_DB
+  || "fincompliance";
 
-const COLLECTION_NAME = "audit_events";
 
-app.use(express.json());
+const RABBITMQ_URL =
+  process.env.RABBITMQ_URL;
 
-app.use((req, res, next) => {
-  const allowedOrigin =
-    process.env.CORS_ORIGIN ||
-    "http://localhost:5173";
 
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    allowedOrigin
-  );
+const QUEUE_NAME =
+  process.env.RABBITMQ_QUEUE
+  || "compliance.audit.events";
 
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET,POST,OPTIONS"
-  );
 
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type"
-  );
+const app =
+  express();
 
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
+
+app.use(
+  express.json()
+);
+
+
+app.use(
+  (
+    req,
+    res,
+    next
+  ) => {
+
+    const origin =
+      process.env.CORS_ORIGIN
+      || "http://localhost:5173";
+
+
+    res.setHeader(
+      "Access-Control-Allow-Origin",
+      origin
+    );
+
+
+    res.setHeader(
+      "Access-Control-Allow-Methods",
+      "GET,POST,OPTIONS"
+    );
+
+
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type"
+    );
+
+
+    if (
+      req.method
+      === "OPTIONS"
+    ) {
+
+      return res.sendStatus(
+        204
+      );
+    }
+
+
+    next();
   }
+);
 
-  next();
-});
 
 let mongoClient;
 let db;
 let eventsCollection;
 
+let rabbitConnection;
+let rabbitChannel;
 
-async function connectToMongo() {
-  mongoClient = new MongoClient(MONGO_URL);
+let rabbitReady =
+  false;
+
+
+async function connectMongo() {
+
+  mongoClient =
+    new MongoClient(
+      MONGO_URL
+    );
+
 
   await mongoClient.connect();
 
-  db = mongoClient.db(MONGO_DB);
+
+  db =
+    mongoClient.db(
+      MONGO_DB
+    );
+
 
   eventsCollection =
-    db.collection(COLLECTION_NAME);
+    db.collection(
+      "audit_events"
+    );
+
 
   await eventsCollection.createIndex(
-    { event_id: 1 },
-    { unique: true }
+    {
+      event_id:
+        1,
+    },
+    {
+      unique:
+        true,
+    }
   );
 
-  await eventsCollection.createIndex({
-    transaction_ref: 1,
-    occurred_at: -1,
-  });
 
-  await eventsCollection.createIndex({
-    event_type: 1,
-    occurred_at: -1,
-  });
+  await eventsCollection.createIndex(
+    {
+      transaction_ref:
+        1,
+
+      occurred_at:
+        -1,
+    }
+  );
+
+
+  await eventsCollection.createIndex(
+    {
+      event_type:
+        1,
+
+      occurred_at:
+        -1,
+    }
+  );
+
 
   console.log(
-    `Connected to MongoDB database: ${MONGO_DB}`
+    "MongoDB connected"
   );
 }
 
 
-app.get("/", (req, res) => {
-  res.json({
-    application:
-      "FinCompliance Event Service",
+async function storeEvent(
+  event
+) {
 
-    purpose:
-      "Audit and event storage",
+  const document = {
+    event_id:
+      event.event_id,
 
-    database:
-      "MongoDB",
+    event_type:
+      event.event_type,
 
-    status:
-      "running",
-  });
-});
+    transaction_ref:
+      event.transaction_ref
+      || null,
+
+    source:
+      event.source,
+
+    occurred_at:
+      new Date(
+        event.occurred_at
+      ),
+
+    received_at:
+      new Date(),
+
+    payload:
+      event.payload
+      || {},
+  };
 
 
-app.get("/health", async (req, res) => {
   try {
-    await db.command({ ping: 1 });
 
-    res.json({
-      status: "up",
-      service: "event-service",
-      mongo: "up",
-      timestamp:
-        new Date().toISOString(),
-    });
-
-  } catch (error) {
-
-    res.status(503).json({
-      status: "down",
-      service: "event-service",
-      mongo: "down",
-      error: error.message,
-      timestamp:
-        new Date().toISOString(),
-    });
-  }
-});
+    await eventsCollection.insertOne(
+      document
+    );
 
 
-app.post("/events", async (req, res) => {
-  try {
-    const {
-      event_id,
-      event_type,
-      transaction_ref,
-      source,
-      occurred_at,
-      payload,
-    } = req.body;
+    return {
+      inserted:
+        true,
 
-
-    if (
-      !event_id ||
-      !event_type ||
-      !source ||
-      !occurred_at
-    ) {
-      return res.status(400).json({
-        detail:
-          "event_id, event_type, source, and occurred_at are required.",
-      });
-    }
-
-
-    const eventDocument = {
-      event_id,
-      event_type,
-
-      transaction_ref:
-        transaction_ref || null,
-
-      source,
-
-      occurred_at:
-        new Date(occurred_at),
-
-      received_at:
-        new Date(),
-
-      payload:
-        payload || {},
+      duplicate:
+        false,
     };
 
 
-    const result =
-      await eventsCollection.insertOne(
-        eventDocument
-      );
-
-
-    const created =
-      await eventsCollection.findOne({
-        _id: result.insertedId,
-      });
-
-
-    return res.status(201).json({
-      id:
-        created._id.toString(),
-
-      event_id:
-        created.event_id,
-
-      event_type:
-        created.event_type,
-
-      transaction_ref:
-        created.transaction_ref,
-
-      source:
-        created.source,
-
-      occurred_at:
-        created.occurred_at,
-
-      received_at:
-        created.received_at,
-
-      payload:
-        created.payload,
-    });
-
   } catch (error) {
 
-    if (error.code === 11000) {
-      return res.status(409).json({
-        detail:
-          "Event with this event_id already exists.",
-      });
+    if (
+      error.code
+      === 11000
+    ) {
+
+      return {
+        inserted:
+          false,
+
+        duplicate:
+          true,
+      };
     }
 
 
-    console.error(
-      "Failed to create event:",
-      error
-    );
-
-
-    return res.status(500).json({
-      detail:
-        "Event could not be stored.",
-    });
+    throw error;
   }
-});
+}
 
 
-app.get("/events", async (req, res) => {
-  try {
-    const {
-      transaction_ref,
-      event_type,
-    } = req.query;
+async function startRabbitConsumer() {
 
+  if (!RABBITMQ_URL) {
 
-    const limit = Math.min(
-      Math.max(
-        Number(req.query.limit || 20),
-        1
-      ),
-      100
+    console.log(
+      "RABBITMQ_URL not configured"
     );
 
-
-    const filter = {};
-
-
-    if (transaction_ref) {
-      filter.transaction_ref =
-        transaction_ref;
-    }
-
-
-    if (event_type) {
-      filter.event_type =
-        event_type;
-    }
-
-
-    const total =
-      await eventsCollection.countDocuments(
-        filter
-      );
-
-
-    const events =
-      await eventsCollection
-        .find(filter)
-        .sort({
-          occurred_at: -1,
-        })
-        .limit(limit)
-        .toArray();
-
-
-    return res.json({
-      total,
-      limit,
-
-      items: events.map(
-        (event) => ({
-          id:
-            event._id.toString(),
-
-          event_id:
-            event.event_id,
-
-          event_type:
-            event.event_type,
-
-          transaction_ref:
-            event.transaction_ref,
-
-          source:
-            event.source,
-
-          occurred_at:
-            event.occurred_at,
-
-          received_at:
-            event.received_at,
-
-          payload:
-            event.payload,
-        })
-      ),
-    });
-
-  } catch (error) {
-
-    console.error(
-      "Failed to retrieve events:",
-      error
-    );
-
-
-    return res.status(500).json({
-      detail:
-        "Events could not be retrieved.",
-    });
+    return;
   }
-});
 
 
-app.get(
-  "/events/:eventId",
-  async (req, res) => {
+  while (true) {
 
     try {
 
-      const event =
-        await eventsCollection.findOne({
-          event_id:
-            req.params.eventId,
-        });
+      rabbitConnection =
+        await amqp.connect(
+          RABBITMQ_URL
+        );
 
 
-      if (!event) {
+      rabbitChannel =
+        await rabbitConnection.createChannel();
 
-        return res.status(404).json({
+
+      await rabbitChannel.assertQueue(
+        QUEUE_NAME,
+        {
+          durable:
+            true,
+        }
+      );
+
+
+      rabbitChannel.prefetch(
+        10
+      );
+
+
+      rabbitReady =
+        true;
+
+
+      console.log(
+        `RabbitMQ consumer ready: ${QUEUE_NAME}`
+      );
+
+
+      rabbitConnection.on(
+        "close",
+        () => {
+
+          rabbitReady =
+            false;
+
+          console.error(
+            "RabbitMQ connection closed"
+          );
+
+          setTimeout(
+            startRabbitConsumer,
+            3000
+          );
+        }
+      );
+
+
+      rabbitConnection.on(
+        "error",
+        error => {
+
+          rabbitReady =
+            false;
+
+          console.error(
+            "RabbitMQ error",
+            error.message
+          );
+        }
+      );
+
+
+      await rabbitChannel.consume(
+        QUEUE_NAME,
+
+        async message => {
+
+          if (!message) {
+            return;
+          }
+
+
+          try {
+
+            const event =
+              JSON.parse(
+                message.content
+                  .toString()
+              );
+
+
+            const result =
+              await storeEvent(
+                event
+              );
+
+
+            if (
+              result.duplicate
+            ) {
+
+              console.log(
+                `Duplicate event ignored: ${event.event_id}`
+              );
+            }
+
+
+            rabbitChannel.ack(
+              message
+            );
+
+
+          } catch (error) {
+
+            console.error(
+              "Rabbit consumer error",
+              error
+            );
+
+
+            if (
+              error instanceof SyntaxError
+            ) {
+
+              rabbitChannel.nack(
+                message,
+                false,
+                false
+              );
+
+            } else {
+
+              rabbitChannel.nack(
+                message,
+                false,
+                true
+              );
+            }
+          }
+        },
+        {
+          noAck:
+            false,
+        }
+      );
+
+
+      return;
+
+
+    } catch (error) {
+
+      rabbitReady =
+        false;
+
+
+      console.error(
+        "RabbitMQ connection failed:",
+        error.message
+      );
+
+
+      await new Promise(
+        resolve =>
+          setTimeout(
+            resolve,
+            3000
+          )
+      );
+    }
+  }
+}
+
+
+app.get(
+  "/",
+  (
+    req,
+    res
+  ) => {
+
+    res.json({
+      service:
+        "fincompliance-event-service",
+
+      architecture:
+        "RabbitMQ consumer + MongoDB audit store",
+    });
+  }
+);
+
+
+app.get(
+  "/health",
+  async (
+    req,
+    res
+  ) => {
+
+    let mongo =
+      "down";
+
+
+    try {
+
+      await db.command({
+        ping:
+          1,
+      });
+
+      mongo =
+        "up";
+
+    } catch {
+      mongo =
+        "down";
+    }
+
+
+    const healthy =
+      mongo === "up"
+      && rabbitReady;
+
+
+    res.status(
+      healthy
+        ? 200
+        : 503
+    )
+    .json({
+      status:
+        healthy
+          ? "up"
+          : "degraded",
+
+      mongo,
+
+      rabbitmq:
+        rabbitReady
+          ? "up"
+          : "down",
+
+      queue:
+        QUEUE_NAME,
+    });
+  }
+);
+
+
+app.post(
+  "/events",
+  async (
+    req,
+    res
+  ) => {
+
+    const event =
+      req.body;
+
+
+    if (
+      !event.event_id
+      ||
+      !event.event_type
+      ||
+      !event.source
+      ||
+      !event.occurred_at
+    ) {
+
+      return res.status(
+        400
+      )
+      .json({
+        detail:
+          "event_id, event_type, source and occurred_at are required",
+      });
+    }
+
+
+    try {
+
+      const result =
+        await storeEvent(
+          event
+        );
+
+
+      if (
+        result.duplicate
+      ) {
+
+        return res.status(
+          409
+        )
+        .json({
           detail:
-            "Event not found.",
+            "Duplicate event_id",
         });
       }
 
 
-      return res.json({
-        id:
-          event._id.toString(),
+      return res.status(
+        201
+      )
+      .json({
+        status:
+          "stored",
 
         event_id:
           event.event_id,
-
-        event_type:
-          event.event_type,
-
-        transaction_ref:
-          event.transaction_ref,
-
-        source:
-          event.source,
-
-        occurred_at:
-          event.occurred_at,
-
-        received_at:
-          event.received_at,
-
-        payload:
-          event.payload,
       });
+
 
     } catch (error) {
 
       console.error(
-        "Failed to retrieve event:",
         error
       );
 
 
-      return res.status(500).json({
+      return res.status(
+        500
+      )
+      .json({
         detail:
-          "Event could not be retrieved.",
+          "Failed to store event",
       });
     }
   }
 );
 
 
-async function startServer() {
+app.get(
+  "/events",
+  async (
+    req,
+    res
+  ) => {
 
-  try {
-
-    await connectToMongo();
+    const filter = {};
 
 
-    app.listen(
-      PORT,
-      "0.0.0.0",
-      () => {
+    if (
+      req.query
+        .transaction_ref
+    ) {
 
-        console.log(
-          `Event service listening on port ${PORT}`
-        );
-      }
-    );
+      filter.transaction_ref =
+        req.query
+          .transaction_ref;
+    }
 
-  } catch (error) {
 
-    console.error(
-      "Could not start event service:",
-      error
-    );
+    if (
+      req.query
+        .event_type
+    ) {
 
-    process.exit(1);
+      filter.event_type =
+        req.query
+          .event_type;
+    }
+
+
+    const limit =
+      Math.min(
+        100,
+        Math.max(
+          1,
+          Number(
+            req.query.limit
+            || 50
+          )
+        )
+      );
+
+
+    const [
+      items,
+      total,
+    ] =
+      await Promise.all([
+
+        eventsCollection
+          .find(
+            filter
+          )
+          .sort({
+            occurred_at:
+              -1,
+          })
+          .limit(
+            limit
+          )
+          .toArray(),
+
+        eventsCollection
+          .countDocuments(
+            filter
+          ),
+      ]);
+
+
+    res.json({
+      total,
+      items,
+    });
   }
-}
+);
+
+
+app.get(
+  "/events/:eventId",
+  async (
+    req,
+    res
+  ) => {
+
+    const event =
+      await eventsCollection.findOne({
+        event_id:
+          req.params.eventId,
+      });
+
+
+    if (!event) {
+
+      return res.status(
+        404
+      )
+      .json({
+        detail:
+          "Event not found",
+      });
+    }
+
+
+    res.json(
+      event
+    );
+  }
+);
 
 
 async function shutdown() {
@@ -428,11 +697,46 @@ async function shutdown() {
     "Shutting down event service..."
   );
 
-  if (mongoClient) {
-    await mongoClient.close();
-  }
 
-  process.exit(0);
+  try {
+
+    if (
+      rabbitChannel
+    ) {
+
+      await rabbitChannel.close();
+    }
+
+  } catch {}
+
+
+  try {
+
+    if (
+      rabbitConnection
+    ) {
+
+      await rabbitConnection.close();
+    }
+
+  } catch {}
+
+
+  try {
+
+    if (
+      mongoClient
+    ) {
+
+      await mongoClient.close();
+    }
+
+  } catch {}
+
+
+  process.exit(
+    0
+  );
 }
 
 
@@ -447,4 +751,35 @@ process.on(
 );
 
 
-startServer();
+async function main() {
+
+  await connectMongo();
+
+
+  app.listen(
+    PORT,
+    () => {
+
+      console.log(
+        `Event service listening on ${PORT}`
+      );
+    }
+  );
+
+
+  startRabbitConsumer();
+}
+
+
+main().catch(
+  error => {
+
+    console.error(
+      error
+    );
+
+    process.exit(
+      1
+    );
+  }
+);

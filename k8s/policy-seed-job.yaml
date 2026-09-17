@@ -1,0 +1,43 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: fincompliance-policy-seed
+  namespace: fincompliance
+
+spec:
+  backoffLimit: 2
+
+  template:
+    metadata:
+      labels:
+        app: policy-seed
+
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: policy-seed
+
+          image: fincompliance/backend:phase12
+
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - python
+            - -m
+            - app.scripts.seed_compliance_policies
+
+          envFrom:
+            - configMapRef:
+                name: fincompliance-config
+
+            - secretRef:
+                name: fincompliance-secrets
+
+          env:
+            - name: CHROMA_HOST
+              value: "chroma"
+
+            - name: CHROMA_PORT
+              value: "8000"

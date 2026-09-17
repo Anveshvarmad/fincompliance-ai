@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: Service
+
+metadata:
+  name: mongo
+  namespace: fincompliance
+
+spec:
+  selector:
+    app: mongo
+
+  ports:
+    - name: mongo
+      port: 27017
+      targetPort: 27017
+
+---
+
+apiVersion: apps/v1
+kind: StatefulSet
+
+metadata:
+  name: mongo
+  namespace: fincompliance
+
+spec:
+  serviceName: mongo
+
+  replicas: 1
+
+  selector:
+    matchLabels:
+      app: mongo
+
+  template:
+    metadata:
+      labels:
+        app: mongo
+
+    spec:
+      containers:
+        - name: mongo
+
+          image: mongo:8
+
+          ports:
+            - containerPort: 27017
+
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - db.adminCommand('ping')
+
+            initialDelaySeconds: 8
+            periodSeconds: 5
+
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - db.adminCommand('ping')
+
+            initialDelaySeconds: 25
+            periodSeconds: 10
+
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "192Mi"
+
+            limits:
+              cpu: "500m"
+              memory: "768Mi"
+
+          volumeMounts:
+            - name: mongo-data
+              mountPath: /data/db
+
+  volumeClaimTemplates:
+    - metadata:
+        name: mongo-data
+
+      spec:
+        accessModes:
+          - ReadWriteOnce
+
+        resources:
+          requests:
+            storage: 2Gi

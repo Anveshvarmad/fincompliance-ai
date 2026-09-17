@@ -1,0 +1,38 @@
+apiVersion: batch/v1
+kind: Job
+
+metadata:
+  name: fincompliance-db-init
+  namespace: fincompliance
+
+spec:
+  backoffLimit: 4
+
+  template:
+    metadata:
+      labels:
+        app: db-init
+
+    spec:
+      restartPolicy: Never
+
+      containers:
+        - name: db-init
+
+          image: fincompliance/backend:phase12
+
+          imagePullPolicy: IfNotPresent
+
+          command:
+            - sh
+            - -c
+            - |
+              python -m app.scripts.init_db
+              python -m app.scripts.init_outbox
+
+          envFrom:
+            - configMapRef:
+                name: fincompliance-config
+
+            - secretRef:
+                name: fincompliance-secrets

@@ -32,3 +32,5 @@ chroma_data/
 .env
 .dev-credentials
 .DS_Store
+.k8s-local-secrets
+.k8s-portforward-*.log

@@ -1,0 +1,68 @@
+services:
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: fincompliance-rabbitmq
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "rabbitmq-diagnostics",
+          "-q",
+          "ping"
+        ]
+
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+
+  event-service:
+    env_file:
+      - .env
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+
+  outbox-worker:
+    build:
+      context: ./backend
+
+    container_name: fincompliance-outbox-worker
+
+    command:
+      python -m app.workers.outbox_worker
+
+    env_file:
+      - .env
+
+    volumes:
+      - ./backend/app:/app/app
+
+    depends_on:
+      postgres:
+        condition: service_started
+
+      rabbitmq:
+        condition: service_healthy
+
+    restart:
+      unless-stopped
+
+
+volumes:
+  rabbitmq_data:
